@@ -1,32 +1,24 @@
-"use client"
-
-import Navbar from "@/components/navbar"
-import HeroSection from "@/components/hero-section"
-import StorySection from "@/components/story-section"
-import PipelineSection from "@/components/pipeline-section"
-import FeaturesSection from "@/components/features-section"
-import UseCasesSection from "@/components/use-cases-section"
-import TerminalSimulation from "@/components/terminal-sim"
-import LiveDemoSection from "@/components/live-demo-section"
-import DeveloperSection from "@/components/developer-section"
-import SecuritySection from "@/components/security-section"
-import TeamSection from "@/components/team-section"
+import Hero from "@/components/hero"
+import ArchitectureDiagram from "@/components/architecture-diagram"
+import HowItWorks from "@/components/how-it-works"
+import Features from "@/components/features"
+import LiveDemo from "@/components/live-demo"
+import UseCases from "@/components/use-cases"
+import SDK from "@/components/sdk"
+import Team from "@/components/team"
 import Footer from "@/components/footer"
 
 export default function Home() {
   return (
-    <main className="bg-background text-foreground overflow-x-hidden">
-      <Navbar />
-      <HeroSection />
-      <StorySection />
-      <PipelineSection />
-      <FeaturesSection />
-      <UseCasesSection />
-      <TerminalSimulation />
-      <LiveDemoSection />
-      <DeveloperSection />
-      <SecuritySection />
-      <TeamSection />
+    <main className="min-h-screen bg-background">
+      <Hero />
+      <ArchitectureDiagram />
+      <HowItWorks />
+      <Features />
+      <LiveDemo />
+      <UseCases />
+      <SDK />
+      <Team />
       <Footer />
     </main>
   )
