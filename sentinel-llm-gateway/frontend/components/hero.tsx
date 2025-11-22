@@ -3,7 +3,6 @@
 import { useRef } from "react"
 import { motion } from "framer-motion"
 import SentinelEmblem from "./sentinel-emblem"
-import Link from "next/link"
 
 export default function Hero() {
   const containerRef = useRef(null)
@@ -62,8 +61,6 @@ export default function Hero() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              as={Link}
-              href="/demo"
               className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-semibold neon-glow hover:shadow-lg transition-all duration-300"
             >
               Try Live Demo
