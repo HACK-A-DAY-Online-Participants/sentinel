@@ -59,27 +59,28 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-wrap gap-4 pt-4">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-semibold neon-glow hover:shadow-lg transition-all duration-300"
-            >
-              Try Live Demo
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-8 py-3 bg-transparent border border-accent text-accent rounded-lg font-semibold hover:shadow-lg hover:shadow-accent/50 transition-all duration-300"
-            >
-              View GitHub
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-8 py-3 bg-transparent border border-muted text-foreground rounded-lg font-semibold hover:shadow-lg transition-all duration-300"
-            >
-              Download Whitepaper
-            </motion.button>
+            <motion.a
+  href="https://livedemo-brown.vercel.app/"
+  target="_blank"
+  rel="noopener noreferrer"
+  whileHover={{ scale: 1.05 }}
+  whileTap={{ scale: 0.95 }}
+  className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-semibold neon-glow hover:shadow-lg transition-all duration-300 cursor-pointer"
+>
+  Try Live Demo
+</motion.a>
+
+            <motion.a
+  href="https://github.com/HACK-A-DAY-Online-Participants/sentinel/tree/main/sentinel-llm-gateway "
+  target="_blank"
+  rel="noopener noreferrer"
+  whileHover={{ scale: 1.05 }}
+  whileTap={{ scale: 0.95 }}
+  className="px-8 py-3 bg-primary text-primary-foreground rounded-lg font-semibold neon-glow hover:shadow-lg transition-all duration-300 cursor-pointer"
+>
+  Git hub Repo
+</motion.a>
+            
           </div>
 
           <p className="text-sm text-muted-foreground pt-2">
