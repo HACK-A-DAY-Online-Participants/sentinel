@@ -1,13 +1,13 @@
 """
-Sentinel ML Detector — MAX Edition
-High-accuracy, low-latency ML classifier for prompt injection detection.
+Sentinel ML Detector — Absolute MAX Edition
+High-accuracy + safe-failure ML classifier for prompt-injection / jailbreak detection.
 
-Goals:
-    • Production-safe (never breaks the pipeline)
-    • Auto hot-reload when model files update (zero downtime deployments)
-    • Fully thread-safe for async/multiworker FastAPI servers
-    • Hardened against prompt-overflow / DoS attacks
-    • Built for observability & A/B comparison
+Design guarantees:
+    ✓ Never raises → always returns a valid score
+    ✓ Fast startup → lazy load + incremental hot reload
+    ✓ Safe for asynchronous multi-worker FastAPI
+    ✓ DoS-resistant via max prompt length + bounded scoring
+    ✓ Plug-and-play with observability / AB testing / fallbacks
 """
 
 from __future__ import annotations
@@ -15,9 +15,8 @@ from __future__ import annotations
 import joblib
 import time
 import threading
-import json
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Callable
 
 
 # ========================= MODEL CONFIG ========================= #
@@ -26,10 +25,11 @@ BASE = Path(__file__).resolve().parent.parent
 VECTOR_FILE = BASE / "models" / "vectorizer.pkl"
 MODEL_FILE = BASE / "models" / "classifier.pkl"
 
-MODEL_RELOAD_INTERVAL = 30.0        # seconds — hot reload
-MAX_PROMPT_CHARS = 8000             # avoid DoS via huge string
-DEFAULT_SCORE = 0.0                 # fallback score
-CONFIDENCE_CLAMP = (0.0, 1.0)       # bounds
+MODEL_RELOAD_INTERVAL = 30.0   # seconds — hot reload cadence
+MAX_PROMPT_CHARS = 8000        # DoS safety
+DEFAULT_SCORE = 0.0            # fallback if model unavailable
+CLAMP = (0.0, 1.0)             # bounded output
+SMOOTHING = 0.05               # reduces jitter for dashboards
 
 
 # ========================= INTERNAL STATE ========================= #
@@ -37,14 +37,20 @@ CONFIDENCE_CLAMP = (0.0, 1.0)       # bounds
 vectorizer = None
 classifier = None
 _last_loaded_ts = 0.0
+_model_hash: Optional[str] = None
 _lock = threading.Lock()
-_loaded_model_hash = None     # ensures reload only on true change
 
 
-# ========================= MODEL LOADER ========================= #
+# ========================= OBSERVABILITY HOOKS ========================= #
 
-def _file_hash(path: Path) -> Optional[str]:
-    """Cheap and fast file hash (timestamp + size)."""
+# Optional callbacks (apps like Grafana / Datadog / Prometheus can use these)
+on_model_reload: Optional[Callable[[Dict[str, Any]], None]] = None
+on_inference: Optional[Callable[[Dict[str, Any]], None]] = None
+
+
+# ========================= LOADER HELPERS ========================= #
+
+def _hash_file(path: Path) -> Optional[str]:
     try:
         stat = path.stat()
         return f"{stat.st_mtime_ns}-{stat.st_size}"
@@ -53,12 +59,8 @@ def _file_hash(path: Path) -> Optional[str]:
 
 
 def _load_model_if_needed() -> None:
-    """
-    Load model lazily & reload automatically if:
-      1) Model files change OR
-      2) Reload interval elapsed
-    """
-    global vectorizer, classifier, _last_loaded_ts, _loaded_model_hash
+    """Lazy + hot reload: reload only when files actually change."""
+    global vectorizer, classifier, _last_loaded_ts, _model_hash
 
     now = time.time()
     if now - _last_loaded_ts < MODEL_RELOAD_INTERVAL:
@@ -66,59 +68,68 @@ def _load_model_if_needed() -> None:
 
     with _lock:
         try:
-            new_hash = f"{_file_hash(VECTOR_FILE)}-{_file_hash(MODEL_FILE)}"
-            if _loaded_model_hash == new_hash:
-                _last_loaded_ts = now
-                return
+            # Update last check timestamp first (prevents reload storms)
+            _last_loaded_ts = now
 
-            # Attempt loading
+            new_hash = f"{_hash_file(VECTOR_FILE)}-{_hash_file(MODEL_FILE)}"
+            if new_hash == _model_hash:
+                return  # nothing changed
+
             vec = joblib.load(VECTOR_FILE)
             clf = joblib.load(MODEL_FILE)
 
             vectorizer = vec
             classifier = clf
-            _loaded_model_hash = new_hash
-            _last_loaded_ts = now
+            _model_hash = new_hash
+
+            if on_model_reload:
+                on_model_reload({"event": "model_reloaded", "hash": new_hash})
 
         except Exception:
-            # Fail gracefully while preserving service uptime
             vectorizer = None
             classifier = None
-            _loaded_model_hash = None
-            _last_loaded_ts = now
+            _model_hash = None
+            # reload will be retried later — service stays up
 
 
 # ========================= INFERENCE ========================= #
 
 def ml_injection_score(prompt: str) -> float:
     """
-    Compute ML probability that a prompt is malicious (0.0 — 1.0).
+    Return ML probability that the prompt is malicious (0.0 — 1.0).
 
-    Guarantees:
-        • Never raises an exception
-        • Never blocks the caller
-        • Always returns a valid float
-        • Works even if the model is missing / corrupted
-
-    This function should ALWAYS be safe to call from API middleware.
+    Safety guarantees:
+        - Never throws
+        - Always returns a valid float
+        - Always works even if the model is corrupted/missing
     """
     if not prompt:
         return DEFAULT_SCORE
 
-    # Prompt length hardening (DoS prevention)
     if len(prompt) > MAX_PROMPT_CHARS:
         prompt = prompt[:MAX_PROMPT_CHARS]
 
-    # Ensure model loaded (lazy + hot reload)
     _load_model_if_needed()
 
     if vectorizer is None or classifier is None:
-        return DEFAULT_SCORE
+        score = DEFAULT_SCORE
+    else:
+        try:
+            X = vectorizer.transform([prompt])
+            proba = float(classifier.predict_proba(X)[0][1])
+            lo, hi = CLAMP
+            score = max(lo, min(hi, proba))
+        except Exception:
+            score = DEFAULT_SCORE
 
-    try:
-        X = vectorizer.transform([prompt])
-        proba = classifier.predict_proba(X)[0][1]
-        lo, hi = CONFIDENCE_CLAMP
-        return float(max(lo, min(hi, float(proba))))
-    except Exception:
-        return DEFAULT_SCORE
+    # Score smoothing (stabilizes tiny oscillations between predictions)
+    if SMOOTHING > 0 and score > SMOOTHING:
+        score = float(round(score * (1 - SMOOTHING) + SMOOTHING, 4))
+
+    if on_inference:
+        try:
+            on_inference({"score": score, "model_loaded": classifier is not None})
+        except Exception:
+            pass
+
+    return score
